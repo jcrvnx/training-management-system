@@ -23,7 +23,7 @@ $user = null;
 $conn = connectDB(false);
 
 if (!$conn || !($conn instanceof mysqli)) {
-    redirect(url('install.php'));
+    redirect(url('install_schema.php'));
 }
 
 // Process form submission

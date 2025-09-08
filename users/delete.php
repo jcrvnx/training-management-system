@@ -27,7 +27,7 @@ if ($user_id == $_SESSION['user']['id']) {
 $conn = connectDB(false);
 
 if (!$conn || !($conn instanceof mysqli)) {
-    redirect(url('install.php'));
+    redirect(url('install_schema.php'));
 }
 
 // Check if user exists

@@ -14,7 +14,7 @@ $conn = connectDB(false);
 
 // Check database connection
 if (!$conn || !($conn instanceof mysqli)) {
-    redirect(url('install.php'));
+    redirect(url('install_schema.php'));
 }
 
 // Get all users

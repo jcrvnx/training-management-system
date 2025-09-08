@@ -11,7 +11,7 @@ if (isset($_SESSION['user'])) {
 
 // Check if installation is complete
 if (!file_exists('../install_complete.flag')) {
-    redirect(url('install.php'));
+    redirect(url('install_schema.php'));
 }
 
 $error = '';
@@ -27,7 +27,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $conn = connectDB(false); // Connect without creating database
         
         if (!$conn || !($conn instanceof mysqli)) {
-            redirect(url('install.php'));
+            redirect(url('install_schema.php'));
         }
         
         // Check if users table exists
@@ -40,11 +40,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!$tablesExist) {
             // Tables don't exist, redirect to installation
             closeDB($conn);
-            redirect(url('install.php'));
+            redirect(url('install_schema.php'));
         }
         
         // Prepare statement to prevent SQL injection
-        $stmt = $conn->prepare("SELECT id, full_name, email, password FROM users WHERE email = ?");
+        $stmt = $conn->prepare("SELECT id, full_name, email, password, role FROM users WHERE email = ?");
         $stmt->bind_param("s", $email);
         $stmt->execute();
         $result = $stmt->get_result();
@@ -52,19 +52,55 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($result->num_rows === 1) {
             $user = $result->fetch_assoc();
             
-            // Verify password - in real app, use password_verify() with hashed passwords
-            if ($password === $user['password']) { // Simple comparison for demo purposes
+            // Verify password - handle both old and new password formats
+            $passwordValid = false;
+            
+            // Try new password_hash format first
+            if (password_verify($password, $user['password'])) {
+                $passwordValid = true;
+            } 
+            // Fallback to old plain text format for existing users
+            elseif ($password === $user['password']) {
+                $passwordValid = true;
+                
+                // Update to hashed password for future logins
+                $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
+                $updateStmt = $conn->prepare("UPDATE users SET password = ? WHERE id = ?");
+                $updateStmt->bind_param("si", $hashedPassword, $user['id']);
+                $updateStmt->execute();
+                $updateStmt->close();
+            }
+            
+            if ($passwordValid) {
+                // Get complete user data including role
+                $userStmt = $conn->prepare("SELECT id, full_name, email, role FROM users WHERE id = ?");
+                $userStmt->bind_param("i", $user['id']);
+                $userStmt->execute();
+                $userResult = $userStmt->get_result();
+                $userData = $userResult->fetch_assoc();
+                $userStmt->close();
+                
                 // Set user session
                 $_SESSION['user'] = [
-                    'id' => $user['id'],
-                    'name' => $user['full_name'],
-                    'email' => $user['email']
+                    'id' => $userData['id'],
+                    'name' => $userData['full_name'],
+                    'email' => $userData['email'],
+                    'role' => $userData['role']
                 ];
+                
+                // Update last login time
+                $loginStmt = $conn->prepare("UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?");
+                $loginStmt->bind_param("i", $user['id']);
+                $loginStmt->execute();
+                $loginStmt->close();
+                
+                // Log login activity
+                logActivity('LOGIN', 'users', $user['id']);
                 
                 // Redirect to dashboard
                 redirect(url('dashboard.php'));
             } else {
-                $error = 'Invalid password';
+                $error = 'Invalid email or password';
             }
         } else {
             $error = 'User not found';
@@ -113,9 +149,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             
                             <div class="mt-3 text-center">
                                 <p>Don't have an account? <a href="<?php echo url('auth/register.php'); ?>">Register now</a></p>
-                                <small>
-                                    <a href="<?php echo url('install.php'); ?>" class="text-muted">Run Installation</a>
-                                </small>
                             </div>
                         </form>
                     </div>

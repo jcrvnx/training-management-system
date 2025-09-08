@@ -47,7 +47,7 @@ function connectDB($createIfNotExists = true) {
             return $e->getMessage();
         } else {
             // In normal operation, redirect to installation
-            header("Location: " . BASE_URL . "/install.php?error=" . urlencode($e->getMessage()));
+            header("Location: " . BASE_URL . "/install_schema.php?error=" . urlencode($e->getMessage()));
             exit();
         }
     }

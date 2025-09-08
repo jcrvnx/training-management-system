@@ -11,7 +11,7 @@ if (isset($_SESSION['user'])) {
 
 // Check if installation is complete
 if (!file_exists('../install_complete.flag')) {
-    redirect(url('install.php'));
+    redirect(url('install_schema.php'));
 }
 
 $error = '';
@@ -37,7 +37,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $conn = connectDB(false);
         
         if (!$conn || !($conn instanceof mysqli)) {
-            redirect(url('install.php'));
+            redirect(url('install_schema.php'));
         }
         
         // Check if users table exists
@@ -49,7 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         if (!$tablesExist) {
             closeDB($conn);
-            redirect(url('install.php'));
+            redirect(url('install_schema.php'));
         }
         
         // Check if email already exists

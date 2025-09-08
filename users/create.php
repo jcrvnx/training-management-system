@@ -4,10 +4,8 @@ require_once '../includes/config.php';
 require_once '../includes/functions.php';
 require_once '../includes/db.php';
 
-// Check if user is logged in
-if (!isLoggedIn()) {
-    redirect(url('auth/login.php'));
-}
+// Check permissions
+requirePermission('users.create');
 
 $error = '';
 
@@ -18,6 +16,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $password = sanitize($_POST['password']);
     $confirm_password = sanitize($_POST['confirm_password']);
     $role = sanitize($_POST['role']);
+    $phone = sanitize($_POST['phone']);
+    $department = sanitize($_POST['department']);
+    $position = sanitize($_POST['position']);
     
     // Validate input
     if (empty($full_name) || empty($email) || empty($password) || empty($confirm_password)) {
@@ -28,14 +29,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Passwords do not match';
     } elseif (strlen($password) < 6) {
         $error = 'Password must be at least 6 characters long';
-    } elseif (!in_array($role, ['admin', 'user'])) {
+    } elseif (!in_array($role, ['admin', 'trainer', 'user'])) {
         $error = 'Invalid role selected';
     } else {
         // Get database connection
         $conn = connectDB(false);
         
         if (!$conn || !($conn instanceof mysqli)) {
-            redirect(url('install.php'));
+            redirect(url('install_schema.php'));
         }
         
         // Check if email already exists
@@ -48,13 +49,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = 'Email already exists';
             $stmt->close();
         } else {
+            // Hash password for security
+            $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
+            
             // Insert new user
             $stmt = $conn->prepare(
-                "INSERT INTO users (full_name, email, password, role) VALUES (?, ?, ?, ?)"
+                "INSERT INTO users (full_name, email, password, role, phone, department, position) VALUES (?, ?, ?, ?, ?, ?, ?)"
             );
-            $stmt->bind_param("ssss", $full_name, $email, $password, $role);
+            $stmt->bind_param("sssssss", $full_name, $email, $hashedPassword, $role, $phone, $department, $position);
             
             if ($stmt->execute()) {
+                $userId = $conn->insert_id;
+                
+                // Log activity
+                logActivity('CREATE', 'users', $userId, null, array(
+                    'full_name' => $full_name,
+                    'email' => $email,
+                    'role' => $role
+                ));
+                
                 // Success
                 $_SESSION['message'] = 'User has been created successfully';
                 redirect(url('users/'));
@@ -110,12 +123,34 @@ include_once '../templates/header.php';
                 </div>
             </div>
             
-            <div class="mb-3">
-                <label for="role" class="form-label">Role</label>
-                <select class="form-select" id="role" name="role">
-                    <option value="user" selected>User</option>
-                    <option value="admin">Administrator</option>
-                </select>
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label for="phone" class="form-label">Phone Number</label>
+                    <input type="tel" class="form-control" id="phone" name="phone" value="<?php echo isset($phone) ? $phone : ''; ?>">
+                </div>
+                
+                <div class="col-md-6 mb-3">
+                    <label for="role" class="form-label">Role *</label>
+                    <select class="form-select" id="role" name="role" required>
+                        <option value="user" selected>User</option>
+                        <option value="trainer">Trainer</option>
+                        <?php if (isAdmin()): ?>
+                        <option value="admin">Administrator</option>
+                        <?php endif; ?>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label for="department" class="form-label">Department</label>
+                    <input type="text" class="form-control" id="department" name="department" value="<?php echo isset($department) ? $department : ''; ?>">
+                </div>
+                
+                <div class="col-md-6 mb-3">
+                    <label for="position" class="form-label">Position</label>
+                    <input type="text" class="form-control" id="position" name="position" value="<?php echo isset($position) ? $position : ''; ?>">
+                </div>
             </div>
             
             <div class="d-flex justify-content-between">

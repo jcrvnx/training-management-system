@@ -14,7 +14,7 @@ $conn = connectDB(false);
 
 // Check database connection
 if (!$conn || !($conn instanceof mysqli)) {
-    redirect(url('install.php'));
+    redirect(url('install_schema.php'));
 }
 
 // Check if required tables exist
@@ -31,7 +31,7 @@ foreach ($requiredTables as $table) {
 
 if (!$tablesExist) {
     closeDB($conn);
-    redirect(url('install.php'));
+    redirect(url('install_schema.php'));
 }
 
 // Get all enrollments with user and training details using JOIN
