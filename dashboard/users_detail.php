@@ -208,7 +208,7 @@ include_once '../templates/header.php';
                                         </div>
                                         <div>
                                             <strong><?php echo htmlspecialchars($user['full_name']); ?></strong>
-                                            <?php if ($user['position']): ?>
+                                            <?php if (isset($user['position']) && $user['position']): ?>
                                                 <br><small class="text-muted"><?php echo htmlspecialchars($user['position']); ?></small>
                                             <?php endif; ?>
                                         </div>
@@ -240,7 +240,7 @@ include_once '../templates/header.php';
                                     </span>
                                 </td>
                                 <td>
-                                    <?php echo $user['department'] ? htmlspecialchars($user['department']) : '<span class="text-muted">Not set</span>'; ?>
+                                    <?php echo (isset($user['department']) && $user['department']) ? htmlspecialchars($user['department']) : '<span class="text-muted">Not set</span>'; ?>
                                 </td>
                                 <td>
                                     <span class="badge bg-info"><?php echo $user['enrollment_count']; ?></span>

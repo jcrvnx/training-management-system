@@ -13,11 +13,11 @@ if (!isLoggedIn()) {
 $conn = connectDB();
 
 // Get all trainings with error handling
-$result = $conn->query("SELECT t.*, c.name as category_name, u.full_name as instructor_name FROM trainings t LEFT JOIN course_categories c ON t.category_id = c.id LEFT JOIN users u ON t.instructor_id = u.id ORDER BY t.start_date DESC");
+$result = $conn->query("SELECT t.* FROM trainings t ORDER BY t.created_at DESC");
 
 // Check if query failed
 if (!$result) {
-    $result = $conn->query("SELECT * FROM trainings ORDER BY start_date DESC");
+    $result = $conn->query("SELECT * FROM trainings ORDER BY created_at DESC");
     if (!$result) {
         die('Database query failed: ' . $conn->error);
     }
@@ -67,12 +67,16 @@ include_once '../templates/header.php';
                                 <td><?php echo $training['title']; ?></td>
                                 <td>
                                     <?php 
-                                    echo date('M d, Y', strtotime($training['start_date'])) . ' - ' . 
-                                         date('M d, Y', strtotime($training['end_date']));
+                                    if (isset($training['start_date']) && isset($training['end_date'])) {
+                                        echo date('M d, Y', strtotime($training['start_date'])) . ' - ' . 
+                                             date('M d, Y', strtotime($training['end_date']));
+                                    } else {
+                                        echo 'TBD';
+                                    }
                                     ?>
                                 </td>
-                                <td><?php echo $training['location']; ?></td>
-                                <td><?php echo $training['max_participants']; ?></td>
+                                <td><?php echo isset($training['location']) ? $training['location'] : 'TBD'; ?></td>
+                                <td><?php echo isset($training['max_participants']) ? $training['max_participants'] : 'Unlimited'; ?></td>
                                 <td class="text-end">
                                     <a href="<?php echo url('trainings/edit.php?id=' . $training['id']); ?>" class="btn btn-sm btn-primary">
                                         Edit

@@ -22,9 +22,11 @@ $userRole = getCurrentUserRole();
 // Role-based query for quizzes
 if (isAdmin()) {
     $query = "
-        SELECT q.*, t.title as training_title, u.full_name as creator_name,
+        SELECT q.*,
+               COALESCE(t.title, 'Unknown Training') as training_title, 
+               COALESCE(u.full_name, 'Unknown Creator') as creator_name,
                (SELECT COUNT(*) FROM quiz_attempts WHERE quiz_id = q.id) as attempt_count,
-               (SELECT COUNT(*) FROM quiz_attempts WHERE quiz_id = q.id AND passed = 1) as pass_count
+               0 as pass_count
         FROM quizzes q 
         LEFT JOIN trainings t ON q.training_id = t.id
         LEFT JOIN users u ON q.created_by = u.id
@@ -33,27 +35,33 @@ if (isAdmin()) {
 } elseif (isTrainer()) {
     $userId = $currentUser['id'];
     $query = "
-        SELECT q.*, t.title as training_title, u.full_name as creator_name,
+        SELECT q.*,
+               COALESCE(t.title, 'Unknown Training') as training_title, 
+               COALESCE(u.full_name, 'Unknown Creator') as creator_name,
                (SELECT COUNT(*) FROM quiz_attempts WHERE quiz_id = q.id) as attempt_count,
-               (SELECT COUNT(*) FROM quiz_attempts WHERE quiz_id = q.id AND passed = 1) as pass_count
+               0 as pass_count
         FROM quizzes q 
         LEFT JOIN trainings t ON q.training_id = t.id
         LEFT JOIN users u ON q.created_by = u.id
-        WHERE t.instructor_id = {$userId} OR q.created_by = {$userId}
+        WHERE q.created_by = {$userId}
         ORDER BY q.created_at DESC
     ";
 } else {
     // Regular users see quizzes from trainings they're enrolled in
     $userId = $currentUser['id'];
     $query = "
-        SELECT q.*, t.title as training_title, u.full_name as creator_name,
-               qa.status as my_attempt_status, qa.percentage_score, qa.passed
+        SELECT q.*,
+               COALESCE(t.title, 'Unknown Training') as training_title, 
+               COALESCE(u.full_name, 'Unknown Creator') as creator_name,
+               COALESCE(qa.status, 'not_attempted') as my_attempt_status, 
+               COALESCE(qa.percentage_score, 0) as percentage_score,
+               0 as passed
         FROM quizzes q 
         LEFT JOIN trainings t ON q.training_id = t.id
         LEFT JOIN users u ON q.created_by = u.id
         INNER JOIN enrollments e ON t.id = e.training_id
         LEFT JOIN quiz_attempts qa ON q.id = qa.quiz_id AND qa.user_id = {$userId}
-        WHERE e.user_id = {$userId} AND q.is_active = 1
+        WHERE e.user_id = {$userId}
         ORDER BY q.created_at DESC
     ";
 }

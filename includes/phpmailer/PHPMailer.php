@@ -193,5 +193,11 @@ class PHPMailer
     {
         $this->clearAddresses();
     }
+    
+    public function isHTML($isHTML = true)
+    {
+        $this->isHTML = $isHTML;
+        return true;
+    }
 }
 ?>

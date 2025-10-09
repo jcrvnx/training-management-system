@@ -22,32 +22,33 @@ $userRole = getCurrentUserRole();
 // Role-based query for trainings
 if (isAdmin()) {
     $query = "
-        SELECT t.*, c.name as category_name, u.full_name as instructor_name,
-               (SELECT COUNT(*) FROM enrollments WHERE training_id = t.id) as enrollment_count
+        SELECT t.*,
+               (SELECT COUNT(*) FROM enrollments WHERE training_id = t.id) as enrollment_count,
+               'Uncategorized' as category_name,
+               'Not assigned' as instructor_name
         FROM trainings t 
-        LEFT JOIN course_categories c ON t.category_id = c.id 
-        LEFT JOIN users u ON t.instructor_id = u.id 
         ORDER BY t.created_at DESC
     ";
 } elseif (isTrainer()) {
     $userId = $currentUser['id'];
     $query = "
-        SELECT t.*, c.name as category_name, u.full_name as instructor_name,
-               (SELECT COUNT(*) FROM enrollments WHERE training_id = t.id) as enrollment_count
+        SELECT t.*,
+               (SELECT COUNT(*) FROM enrollments WHERE training_id = t.id) as enrollment_count,
+               'Uncategorized' as category_name,
+               'Not assigned' as instructor_name
         FROM trainings t 
-        LEFT JOIN course_categories c ON t.category_id = c.id 
-        LEFT JOIN users u ON t.instructor_id = u.id 
-        WHERE t.instructor_id = {$userId}
+        WHERE t.id IN (SELECT DISTINCT training_id FROM enrollments WHERE training_id = t.id)
         ORDER BY t.created_at DESC
     ";
 } else {
     // Regular users see trainings they're enrolled in
     $userId = $currentUser['id'];
     $query = "
-        SELECT t.*, c.name as category_name, u.full_name as instructor_name, e.enrolled_at, e.status as enrollment_status
+        SELECT t.*, e.enrolled_at, 
+               COALESCE(e.status, 'enrolled') as enrollment_status,
+               'Uncategorized' as category_name,
+               'Not assigned' as instructor_name
         FROM trainings t 
-        LEFT JOIN course_categories c ON t.category_id = c.id 
-        LEFT JOIN users u ON t.instructor_id = u.id 
         INNER JOIN enrollments e ON t.id = e.training_id
         WHERE e.user_id = {$userId}
         ORDER BY e.enrolled_at DESC

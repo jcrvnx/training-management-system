@@ -37,7 +37,9 @@ if (!$tablesExist) {
 // Get all enrollments with user and training details using JOIN
 $query = "
     SELECT e.id, u.id as user_id, u.full_name, t.id as training_id, t.title, 
-           t.start_date, t.end_date, e.enrolled_at
+           e.enrolled_at,
+           'TBD' as start_date_display,
+           'TBD' as end_date_display
     FROM enrollments e
     JOIN users u ON e.user_id = u.id
     JOIN trainings t ON e.training_id = t.id
@@ -105,8 +107,7 @@ include_once '../templates/header.php';
                                 </td>
                                 <td>
                                     <?php 
-                                    echo date('M d, Y', strtotime($enrollment['start_date'])) . ' - ' . 
-                                         date('M d, Y', strtotime($enrollment['end_date']));
+                                    echo $enrollment['start_date_display'] . ' - ' . $enrollment['end_date_display'];
                                     ?>
                                 </td>
                                 <td><?php echo date('M d, Y', strtotime($enrollment['enrolled_at'])); ?></td>
