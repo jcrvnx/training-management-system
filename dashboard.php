@@ -372,6 +372,9 @@ include_once 'templates/header.php';
                         </div>
                         <p class="mb-2"><strong>Total Enrollments:</strong> <?php echo $enrollmentCount; ?></p>
                         <p class="mb-2"><strong>Success Rate:</strong> <?php echo $quizAttempts > 0 ? round(($passedQuizzes / $quizAttempts) * 100, 1) : 0; ?>%</p>
+                        <a href="<?php echo url('dashboard/analytics.php'); ?>" class="btn btn-primary btn-sm">
+                            <i class="fas fa-chart-line me-1"></i>View Analytics
+                        </a>
                     </div>
                 </div>
             </div>
