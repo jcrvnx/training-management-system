@@ -102,14 +102,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         // Insert new training with enhanced fields
         $stmt = $conn->prepare(
-            "INSERT INTO trainings (title, description, start_date, end_date, location, max_participants, category_id, instructor_id, difficulty_level, estimated_duration_hours, is_mandatory, enrollment_deadline, completion_deadline, passing_score) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            "INSERT INTO trainings (title, description, start_date, end_date, location, max_participants, category_id, instructor_id, difficulty_level, estimated_duration_hours, is_mandatory, enrollment_deadline, completion_deadline, passing_score, created_by) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         );
         
         if (!$stmt) {
             $error = 'Error preparing statement: ' . $conn->error;
         } else {
-            $stmt->bind_param("sssssiissdissi", 
+            $currentUserId = getCurrentUser()['id'];
+            $stmt->bind_param("sssssiissdissii", 
                 $data['title'], 
                 $data['description'], 
                 $data['start_date'], 
@@ -123,7 +124,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $data['is_mandatory'], 
                 $data['enrollment_deadline'], 
                 $data['completion_deadline'], 
-                $data['passing_score']
+                $data['passing_score'],
+                $currentUserId
             );
         
             if ($stmt->execute()) {

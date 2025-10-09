@@ -198,7 +198,7 @@ include_once 'templates/header.php';
                 <i class="fas fa-tachometer-alt text-primary me-2" style="font-size: 2rem;"></i>
                 <div>
                     <h1 class="mb-0">Dashboard</h1>
-                    <p class="lead mt-1 mb-0">Welcome, <?php echo htmlspecialchars($currentUser['full_name']); ?>!</p>
+                    <p class="lead mt-1 mb-0">Welcome, <?php echo htmlspecialchars($currentUser['name']); ?>!</p>
                     <small class="text-muted">Role: <?php echo ucfirst($userRole); ?></small>
                 </div>
             </div>

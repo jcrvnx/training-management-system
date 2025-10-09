@@ -38,6 +38,26 @@ require_once __DIR__ . '/../includes/functions.php';
                         Enrollments
                     </a>
                 </li>
+                <?php if (!hasMinimumRole('admin')): ?>
+                <li class="nav-item">
+                    <a class="nav-link d-flex align-items-center" href="<?php echo url('certificates/my-certificates.php'); ?>">
+                        <i class="bi bi-award me-1"></i>
+                        My Certificates
+                    </a>
+                </li>
+                <?php endif; ?>
+                <?php if (hasMinimumRole('trainer')): ?>
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" role="button" data-bs-toggle="dropdown">
+                        <i class="bi bi-tools me-1"></i>
+                        Manage
+                    </a>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="<?php echo url('quizzes/manage.php'); ?>"><i class="bi bi-question-circle me-1"></i> Quizzes</a></li>
+                        <li><a class="dropdown-item" href="<?php echo url('reports/'); ?>"><i class="bi bi-graph-up me-1"></i> Reports</a></li>
+                    </ul>
+                </li>
+                <?php endif; ?>
             </ul>
             <ul class="navbar-nav">
                 <li class="nav-item dropdown">
@@ -47,8 +67,8 @@ require_once __DIR__ . '/../includes/functions.php';
                     </a>
                     <ul class="dropdown-menu dropdown-menu-end">
                         <li>
-                            <a class="dropdown-item" href="<?php echo url('users/edit.php?id=' . $_SESSION['user']['id']); ?>">
-                                <i class="bi bi-gear me-1"></i> My Profile
+                            <a class="dropdown-item" href="<?php echo url('profile.php'); ?>">
+                                <i class="bi bi-person me-1"></i> My Profile
                             </a>
                         </li>
                         <?php if (isAdmin()): ?>
