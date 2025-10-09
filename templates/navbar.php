@@ -51,6 +51,13 @@ require_once __DIR__ . '/../includes/functions.php';
                                 <i class="bi bi-gear me-1"></i> My Profile
                             </a>
                         </li>
+                        <?php if (isAdmin()): ?>
+                        <li>
+                            <a class="dropdown-item" href="<?php echo url('admin/email-settings.php'); ?>">
+                                <i class="bi bi-envelope-gear me-1"></i> Email Settings
+                            </a>
+                        </li>
+                        <?php endif; ?>
                         <li><hr class="dropdown-divider"></li>
                         <li>
                             <a class="dropdown-item" href="<?php echo url('auth/logout.php'); ?>">

@@ -8,15 +8,40 @@
 require_once 'config.php';
 require_once 'functions.php';
 require_once 'db.php';
+require_once dirname(__FILE__) . '/email-config.php';
+require_once dirname(__FILE__) . '/phpmailer/PHPMailer.php';
 
 class NotificationManager {
     private $conn;
+    private $mail;
     
     public function __construct() {
         $this->conn = connectDB(false);
         if (!$this->conn) {
             throw new Exception('Database connection failed');
         }
+        $this->initializeMailer();
+    }
+    
+    private function initializeMailer() {
+        $this->mail = new PHPMailer(true);
+        
+        // Server settings
+        $this->mail->isSMTP();
+        $this->mail->Host = SMTP_HOST;
+        $this->mail->SMTPAuth = true;
+        $this->mail->Username = SMTP_USERNAME;
+        $this->mail->Password = SMTP_PASSWORD;
+        $this->mail->SMTPSecure = SMTP_SECURE;
+        $this->mail->Port = SMTP_PORT;
+        
+        // Default sender
+        $this->mail->setFrom(FROM_EMAIL, FROM_NAME);
+        $this->mail->addReplyTo(REPLY_TO_EMAIL, FROM_NAME);
+        
+        // Content settings
+        $this->mail->isHTML(true);
+        $this->mail->CharSet = 'UTF-8';
     }
     
     /**
@@ -92,12 +117,8 @@ class NotificationManager {
             'system_name' => 'Training Management System'
         ));
         
-        // Send email (using PHP's mail function - in production you'd use PHPMailer or similar)
-        $headers = "MIME-Version: 1.0" . "\r\n";
-        $headers .= "Content-type:text/html;charset=UTF-8" . "\r\n";
-        $headers .= "From: TMS <noreply@" . $_SERVER['HTTP_HOST'] . ">" . "\r\n";
-        
-        return mail($user['email'], $emailSubject, $emailBody, $headers);
+        // Send email using PHPMailer
+        return $this->sendEmailWithPHPMailer($user['email'], $emailSubject, $emailBody);
     }
     
     /**
@@ -195,26 +216,103 @@ class NotificationManager {
     }
     
     /**
-     * Send quiz completion notification
+     * Send enhanced quiz completion notification
      */
     public function notifyQuizCompletion($userId, $quizTitle, $trainingTitle, $score, $passed, $attemptId) {
-        $status = $passed ? 'passed' : 'failed';
-        $title = "Quiz {$status}: {$quizTitle}";
-        $message = "You have {$status} the quiz '{$quizTitle}' for training '{$trainingTitle}' with a score of {$score}%.";
-        $actionUrl = "quizzes/results.php?attempt_id={$attemptId}";
-        
-        return $this->sendNotification($userId, 'quiz_result', $title, $message, $actionUrl);
+        try {
+            // Get user details
+            $userStmt = $this->conn->prepare("SELECT email, full_name FROM users WHERE id = ?");
+            $userStmt->bind_param("i", $userId);
+            $userStmt->execute();
+            $userResult = $userStmt->get_result();
+            
+            if ($userResult->num_rows === 0) {
+                $userStmt->close();
+                return array('success' => false, 'message' => 'User not found');
+            }
+            
+            $user = $userResult->fetch_assoc();
+            $userStmt->close();
+            
+            // Create in-app notification
+            $status = $passed ? 'passed' : 'failed';
+            $title = "Quiz {$status}: {$quizTitle}";
+            $message = "You have {$status} the quiz '{$quizTitle}' for training '{$trainingTitle}' with a score of {$score}%.";
+            $actionUrl = "quizzes/results.php?attempt_id={$attemptId}";
+            
+            $this->sendNotification($userId, 'quiz_result', $title, $message, $actionUrl, false);
+            
+            // Send enhanced email
+            $subject = $passed ? 
+                "Congratulations! You passed the quiz: $quizTitle" : 
+                "Quiz Attempt Completed: $quizTitle";
+            
+            $body = $this->getQuizCompletionEmailTemplate($user['full_name'], $quizTitle, $trainingTitle, $score, $passed, $attemptId);
+            
+            return $this->sendEmailWithPHPMailer($user['email'], $subject, $body);
+            
+        } catch (Exception $e) {
+            error_log("Quiz completion notification error: " . $e->getMessage());
+            return array('success' => false, 'message' => 'Failed to send notification');
+        }
     }
     
     /**
-     * Send certificate earned notification
+     * Send certificate earned notification with attachment
      */
     public function notifyCertificateEarned($userId, $trainingTitle, $certificateId) {
-        $title = "Certificate Earned";
-        $message = "Congratulations! You have earned a certificate for completing '{$trainingTitle}'.";
-        $actionUrl = "certificates/view.php?id={$certificateId}";
-        
-        return $this->sendNotification($userId, 'certificate', $title, $message, $actionUrl);
+        try {
+            // Get user details
+            $userStmt = $this->conn->prepare("SELECT email, full_name FROM users WHERE id = ?");
+            $userStmt->bind_param("i", $userId);
+            $userStmt->execute();
+            $userResult = $userStmt->get_result();
+            
+            if ($userResult->num_rows === 0) {
+                $userStmt->close();
+                return array('success' => false, 'message' => 'User not found');
+            }
+            
+            $user = $userResult->fetch_assoc();
+            $userStmt->close();
+            
+            // Get certificate details
+            $certStmt = $this->conn->prepare("SELECT * FROM certificates WHERE id = ?");
+            $certStmt->bind_param("i", $certificateId);
+            $certStmt->execute();
+            $certResult = $certStmt->get_result();
+            
+            if ($certResult->num_rows === 0) {
+                $certStmt->close();
+                return array('success' => false, 'message' => 'Certificate not found');
+            }
+            
+            $certificate = $certResult->fetch_assoc();
+            $certStmt->close();
+            
+            // Create in-app notification
+            $title = "Certificate Earned";
+            $message = "Congratulations! You have earned a certificate for completing '{$trainingTitle}'.";
+            $actionUrl = "certificates/view.php?id={$certificateId}";
+            
+            $this->sendNotification($userId, 'certificate', $title, $message, $actionUrl, false);
+            
+            // Send enhanced email with certificate attachment
+            $subject = "🎉 Certificate Earned: $trainingTitle";
+            $body = $this->getCertificateEarnedEmailTemplate($user['full_name'], $trainingTitle, $certificate);
+            
+            // Prepare attachments
+            $attachments = array();
+            if ($certificate['file_path'] && file_exists($certificate['file_path'])) {
+                $attachments[] = $certificate['file_path'];
+            }
+            
+            return $this->sendEmailWithAttachments($user['email'], $subject, $body, $attachments);
+            
+        } catch (Exception $e) {
+            error_log("Certificate notification error: " . $e->getMessage());
+            return array('success' => false, 'message' => 'Failed to send notification');
+        }
     }
     
     /**
@@ -485,6 +583,206 @@ class NotificationManager {
         );
         
         return isset($icons[$type]) ? $icons[$type] : '📬';
+    }
+    
+    /**
+     * Send email with PHPMailer
+     */
+    public function sendEmailWithPHPMailer($to, $subject, $body) {
+        try {
+            // Clear previous recipients and attachments
+            $this->mail->clearAllRecipients();
+            $this->mail->clearAttachments();
+            
+            // Set recipient
+            $this->mail->addAddress($to);
+            
+            // Set subject and body
+            $this->mail->Subject = $subject;
+            $this->mail->Body = $body;
+            
+            // Send email
+            $result = $this->mail->send();
+            
+            // Log notification to database
+            $this->logEmailNotification($to, $subject, $result ? 'sent' : 'failed');
+            
+            return array('success' => $result, 'message' => $result ? 'Email sent successfully' : 'Failed to send email');
+            
+        } catch (Exception $e) {
+            error_log("Email sending error: " . $e->getMessage());
+            $this->logEmailNotification($to, $subject, 'failed', $e->getMessage());
+            return array('success' => false, 'message' => 'Email sending failed: ' . $e->getMessage());
+        }
+    }
+    
+    /**
+     * Send email with attachments
+     */
+    private function sendEmailWithAttachments($to, $subject, $body, $attachments = array()) {
+        try {
+            // Clear previous recipients and attachments
+            $this->mail->clearAllRecipients();
+            $this->mail->clearAttachments();
+            
+            // Set recipient
+            $this->mail->addAddress($to);
+            
+            // Set subject and body
+            $this->mail->Subject = $subject;
+            $this->mail->Body = $body;
+            
+            // Add attachments
+            if (!empty($attachments)) {
+                foreach ($attachments as $attachment) {
+                    if (file_exists($attachment)) {
+                        $this->mail->addAttachment($attachment);
+                    }
+                }
+            }
+            
+            // Send email
+            $result = $this->mail->send();
+            
+            // Log notification to database
+            $this->logEmailNotification($to, $subject, $result ? 'sent' : 'failed');
+            
+            return array('success' => $result, 'message' => $result ? 'Email sent successfully' : 'Failed to send email');
+            
+        } catch (Exception $e) {
+            error_log("Email sending error: " . $e->getMessage());
+            $this->logEmailNotification($to, $subject, 'failed', $e->getMessage());
+            return array('success' => false, 'message' => 'Email sending failed: ' . $e->getMessage());
+        }
+    }
+    
+    /**
+     * Log email notification to database
+     */
+    private function logEmailNotification($recipient, $subject, $status, $error = null) {
+        try {
+            // Check if notifications table has the required columns
+            $stmt = $this->conn->prepare("INSERT INTO notifications (recipient_email, subject, status, error_message, created_at) VALUES (?, ?, ?, ?, NOW())");
+            $stmt->bind_param("ssss", $recipient, $subject, $status, $error);
+            $stmt->execute();
+            $stmt->close();
+        } catch (Exception $e) {
+            // If the table structure doesn't support logging, skip it
+            error_log("Failed to log email notification: " . $e->getMessage());
+        }
+    }
+    
+    /**
+     * Get quiz completion email template
+     */
+    private function getQuizCompletionEmailTemplate($userName, $quizTitle, $trainingTitle, $score, $passed, $attemptId) {
+        $statusMessage = $passed ? 
+            "<span style='color: #28a745; font-weight: bold;'>PASSED</span>" : 
+            "<span style='color: #dc3545; font-weight: bold;'>NEEDS IMPROVEMENT</span>";
+        
+        $congratsMessage = $passed ? 
+            "<p style='color: #28a745; font-size: 18px; font-weight: bold;'>🎉 Congratulations! You have successfully passed the quiz!</p>" : 
+            "<p style='color: #dc3545; font-size: 16px;'>Keep learning! You can retake the quiz to improve your score.</p>";
+        
+        $baseUrl = 'http://' . $_SERVER['HTTP_HOST'] . '/training-management-system';
+        
+        return "
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset='UTF-8'>
+            <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+            <title>Quiz Completion</title>
+        </head>
+        <body style='font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;'>
+            <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; color: white; border-radius: 10px 10px 0 0;'>
+                <h1 style='margin: 0; font-size: 28px;'>Quiz Completed!</h1>
+                <p style='margin: 10px 0 0 0; font-size: 16px; opacity: 0.9;'>Training Management System</p>
+            </div>
+            
+            <div style='background: #f8f9fa; padding: 30px; border-radius: 0 0 10px 10px; border: 1px solid #e9ecef;'>
+                <h2 style='color: #495057; margin-top: 0;'>Hello $userName,</h2>
+                
+                <p>You have completed a quiz for the training program. Here are your results:</p>
+                
+                <div style='background: white; padding: 20px; border-radius: 8px; border-left: 4px solid #007bff; margin: 20px 0;'>
+                    <h3 style='margin-top: 0; color: #007bff;'>Quiz Results</h3>
+                    <p><strong>Training:</strong> $trainingTitle</p>
+                    <p><strong>Quiz:</strong> $quizTitle</p>
+                    <p><strong>Score:</strong> $score%</p>
+                    <p><strong>Status:</strong> $statusMessage</p>
+                    <p><strong>Attempt ID:</strong> #$attemptId</p>
+                </div>
+                
+                $congratsMessage
+                
+                <div style='text-align: center; margin: 30px 0;'>
+                    <a href='$baseUrl/dashboard.php' style='background: #007bff; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;'>View Dashboard</a>
+                </div>
+                
+                <hr style='border: none; border-top: 1px solid #dee2e6; margin: 30px 0;'>
+                
+                <p style='color: #6c757d; font-size: 14px; margin: 0;'>
+                    This is an automated message from the Training Management System. Please do not reply to this email.
+                </p>
+            </div>
+        </body>
+        </html>
+        ";
+    }
+    
+    /**
+     * Get certificate earned email template
+     */
+    private function getCertificateEarnedEmailTemplate($userName, $trainingTitle, $certificate) {
+        $baseUrl = 'http://' . $_SERVER['HTTP_HOST'] . '/training-management-system';
+        
+        return "
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset='UTF-8'>
+            <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+            <title>Certificate Earned</title>
+        </head>
+        <body style='font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;'>
+            <div style='background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%); padding: 30px; text-align: center; color: #8b4513; border-radius: 10px 10px 0 0;'>
+                <h1 style='margin: 0; font-size: 28px;'>🎉 Certificate Earned!</h1>
+                <p style='margin: 10px 0 0 0; font-size: 16px; opacity: 0.9;'>Training Management System</p>
+            </div>
+            
+            <div style='background: #f8f9fa; padding: 30px; border-radius: 0 0 10px 10px; border: 1px solid #e9ecef;'>
+                <h2 style='color: #495057; margin-top: 0;'>Congratulations $userName!</h2>
+                
+                <p style='font-size: 18px; color: #28a745; font-weight: bold;'>🎊 You have successfully earned a certificate!</p>
+                
+                <div style='background: white; padding: 20px; border-radius: 8px; border-left: 4px solid #28a745; margin: 20px 0;'>
+                    <h3 style='margin-top: 0; color: #28a745;'>Certificate Details</h3>
+                    <p><strong>Training Program:</strong> $trainingTitle</p>
+                    <p><strong>Certificate ID:</strong> #{$certificate['id']}</p>
+                    <p><strong>Issue Date:</strong> " . date('F j, Y', strtotime($certificate['issued_at'])) . "</p>
+                    <p><strong>Valid Until:</strong> " . ($certificate['expires_at'] ? date('F j, Y', strtotime($certificate['expires_at'])) : 'No expiration') . "</p>
+                </div>
+                
+                <div style='background: #e8f5e8; padding: 20px; border-radius: 8px; margin: 20px 0;'>
+                    <p style='margin: 0; color: #155724;'><strong>🏆 Achievement Unlocked!</strong></p>
+                    <p style='margin: 10px 0 0 0; color: #155724;'>You have demonstrated mastery of the training material and earned this certificate of completion.</p>
+                </div>
+                
+                <div style='text-align: center; margin: 30px 0;'>
+                    <a href='$baseUrl/certificates/my-certificates.php' style='background: #28a745; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold; margin-right: 10px;'>View My Certificates</a>
+                    <a href='$baseUrl/dashboard.php' style='background: #007bff; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;'>Dashboard</a>
+                </div>
+                
+                <hr style='border: none; border-top: 1px solid #dee2e6; margin: 30px 0;'>
+                
+                <p style='color: #6c757d; font-size: 14px; margin: 0;'>
+                    This certificate has been attached to this email. You can also download it anytime from your dashboard.
+                </p>
+            </div>
+        </body>
+        </html>
+        ";
     }
     
     public function __destruct() {

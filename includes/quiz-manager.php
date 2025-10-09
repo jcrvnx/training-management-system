@@ -336,6 +336,12 @@ class QuizManager {
             return array('success' => false, 'message' => 'Attempt not found');
         }
         
+        // Get quiz information
+        $quiz = $this->getQuizInfo($attempt['quiz_id']);
+        if (!$quiz) {
+            return array('success' => false, 'message' => 'Quiz not found');
+        }
+        
         // Calculate time taken
         $timeTaken = round((time() - strtotime($attempt['started_at'])) / 60); // minutes
         
@@ -379,13 +385,15 @@ class QuizManager {
                     
                     // Send certificate notification
                     require_once 'notification-manager.php';
-                    notifyCertificateEarned($attempt['user_id'], $quiz['training_title'], $certificateResult['certificate_id']);
+                    $manager = new NotificationManager();
+                    $manager->notifyCertificateEarned($attempt['user_id'], $quiz['training_title'], $certificateResult['certificate_id']);
                 }
             }
             
             // Send quiz completion notification
             require_once 'notification-manager.php';
-            notifyQuizCompletion($attempt['user_id'], $quiz['title'], $quiz['training_title'], $percentageScore, $passed, $attemptId);
+            $manager = new NotificationManager();
+            $manager->notifyQuizCompletion($attempt['user_id'], $quiz['title'], $quiz['training_title'], $percentageScore, $passed, $attemptId);
             
             // Log activity
             logActivity('UPDATE', 'quiz_attempts', $attemptId, null, array(

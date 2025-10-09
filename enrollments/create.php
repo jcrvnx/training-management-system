@@ -94,6 +94,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     // Commit transaction
                     $conn->commit();
                     
+                    // Send email notifications to successfully enrolled users
+                    if ($enrolledCount > 0) {
+                        // Get training details
+                        $trainingStmt = $conn->prepare("SELECT title FROM trainings WHERE id = ?");
+                        $trainingStmt->bind_param("i", $training_id);
+                        $trainingStmt->execute();
+                        $trainingResult = $trainingStmt->get_result();
+                        $trainingTitle = $trainingResult->fetch_assoc()['title'];
+                        $trainingStmt->close();
+                        
+                        // Send notifications
+                        require_once '../includes/notification-manager.php';
+                        $manager = new NotificationManager();
+                        
+                        foreach ($user_ids as $user_id) {
+                            $manager->notifyTrainingEnrollment($user_id, $trainingTitle, $training_id);
+                        }
+                    }
+                    
                     // Success message
                     $message = "$enrolledCount user(s) enrolled successfully";
                     if ($errorCount > 0) {
