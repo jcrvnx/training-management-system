@@ -77,28 +77,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $userStmt->bind_param("i", $user['id']);
                 $userStmt->execute();
                 $userResult = $userStmt->get_result();
-                $userData = $userResult->fetch_assoc();
-                $userStmt->close();
-                
-                // Set user session
-                $_SESSION['user'] = [
-                    'id' => $userData['id'],
-                    'name' => $userData['full_name'],
-                    'email' => $userData['email'],
-                    'role' => $userData['role']
-                ];
-                
-                // Update last login time
-                $loginStmt = $conn->prepare("UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?");
-                $loginStmt->bind_param("i", $user['id']);
-                $loginStmt->execute();
-                $loginStmt->close();
-                
-                // Log login activity
-                logActivity('LOGIN', 'users', $user['id']);
-                
-                // Redirect to dashboard
-                redirect(url('dashboard.php'));
+                if ($userResult && $userResult->num_rows > 0) {
+                    $userData = $userResult->fetch_assoc();
+                    $userStmt->close();
+                    
+                    // Set user session
+                    $_SESSION['user'] = [
+                        'id' => $userData['id'],
+                        'name' => $userData['full_name'],
+                        'email' => $userData['email'],
+                        'role' => $userData['role']
+                    ];
+                    
+                    // Update last login time
+                    $loginStmt = $conn->prepare("UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?");
+                    $loginStmt->bind_param("i", $user['id']);
+                    $loginStmt->execute();
+                    $loginStmt->close();
+                    
+                    // Log login activity
+                    logActivity('LOGIN', 'users', $user['id']);
+                    
+                    // Redirect to dashboard
+                    redirect(url('dashboard.php'));
+                } else {
+                    $error = 'User data could not be retrieved';
+                    $userStmt->close();
+                }
             } else {
                 $error = 'Invalid email or password';
             }

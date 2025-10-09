@@ -71,27 +71,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             "INSERT INTO trainings (title, description, start_date, end_date, location, max_participants, category_id, instructor_id, difficulty_level, estimated_duration_hours, is_mandatory, enrollment_deadline, completion_deadline, passing_score) 
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         );
-        $stmt->bind_param("sssssiissdssi", $title, $description, $start_date, $end_date, $location, $max_participants, $category_id, $instructor_id, $difficulty_level, $estimated_duration_hours, $is_mandatory, $enrollment_deadline, $completion_deadline, $passing_score);
         
-        if ($stmt->execute()) {
-            $trainingId = $conn->insert_id;
-            
-            // Log activity
-            logActivity('CREATE', 'trainings', $trainingId, null, array(
-                'title' => $title,
-                'instructor_id' => $instructor_id,
-                'category_id' => $category_id
-            ));
-            
-            // Success
-            $_SESSION['message'] = 'Training has been created successfully';
-            redirect(url('trainings/'));
+        if (!$stmt) {
+            $error = 'Error preparing statement: ' . $conn->error;
         } else {
-            // Error
-            $error = 'Error creating training: ' . $conn->error;
-        }
+            $stmt->bind_param("sssssiissdsss", $title, $description, $start_date, $end_date, $location, $max_participants, $category_id, $instructor_id, $difficulty_level, $estimated_duration_hours, $is_mandatory, $enrollment_deadline, $completion_deadline, $passing_score);
         
-        $stmt->close();
+            if ($stmt->execute()) {
+                $trainingId = $conn->insert_id;
+                
+                // Log activity
+                logActivity('CREATE', 'trainings', $trainingId, null, array(
+                    'title' => $title,
+                    'instructor_id' => $instructor_id,
+                    'category_id' => $category_id
+                ));
+                
+                // Success
+                $_SESSION['message'] = 'Training has been created successfully';
+                redirect(url('trainings/'));
+            } else {
+                // Error
+                $error = 'Error creating training: ' . $conn->error;
+            }
+            
+            $stmt->close();
+        }
         closeDB($conn);
     }
 }

@@ -22,16 +22,16 @@ $users = [];
 $trainings = [];
 
 // Get all users for dropdown
-$usersResult = $conn->query("SELECT id, full_name, email FROM users ORDER BY full_name");
-if ($usersResult->num_rows > 0) {
+$usersResult = $conn->query("SELECT id, full_name, email FROM users WHERE is_active = 1 ORDER BY full_name");
+if ($usersResult && $usersResult->num_rows > 0) {
     while ($user = $usersResult->fetch_assoc()) {
         $users[] = $user;
     }
 }
 
 // Get all trainings for dropdown
-$trainingsResult = $conn->query("SELECT id, title, start_date, end_date FROM trainings ORDER BY start_date DESC");
-if ($trainingsResult->num_rows > 0) {
+$trainingsResult = $conn->query("SELECT id, title, start_date, end_date FROM trainings WHERE is_active = 1 ORDER BY start_date DESC");
+if ($trainingsResult && $trainingsResult->num_rows > 0) {
     while ($training = $trainingsResult->fetch_assoc()) {
         $trainings[] = $training;
     }
@@ -50,53 +50,66 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         // Check if training exists
         $stmt = $conn->prepare("SELECT id FROM trainings WHERE id = ?");
-        $stmt->bind_param("i", $training_id);
-        $stmt->execute();
-        $result = $stmt->get_result();
         
-        if ($result->num_rows === 0) {
-            $error = 'Selected training does not exist';
+        if (!$stmt) {
+            $error = 'Error preparing statement: ' . $conn->error;
         } else {
-            // Begin transaction
-            $conn->begin_transaction();
-            $enrolledCount = 0;
-            $errorCount = 0;
-            
-            try {
-                // Prepare statement for enrollment
-                $stmt = $conn->prepare("INSERT INTO enrollments (user_id, training_id) VALUES (?, ?)");
-                $stmt->bind_param("ii", $user_id, $training_id);
+            $stmt->bind_param("i", $training_id);
+            $stmt->execute();
+            $result = $stmt->get_result();
+        
+            if ($result->num_rows === 0) {
+                $error = 'Selected training does not exist';
+                $stmt->close();
+            } else {
+                $stmt->close();
                 
-                // Insert enrollments for each selected user
-                foreach ($user_ids as $user_id) {
-                    // Try to insert, ignore if duplicate
-                    if ($stmt->execute()) {
-                        $enrolledCount++;
-                    } elseif ($conn->errno === 1062) { // Duplicate entry error
-                        $errorCount++;
-                    } else {
-                        throw new Exception($conn->error);
+                // Begin transaction
+                $conn->begin_transaction();
+                $enrolledCount = 0;
+                $errorCount = 0;
+                
+                try {
+                    // Prepare statement for enrollment
+                    $enrollStmt = $conn->prepare("INSERT INTO enrollments (user_id, training_id) VALUES (?, ?)");
+                    
+                    if (!$enrollStmt) {
+                        throw new Exception('Error preparing enrollment statement: ' . $conn->error);
                     }
+                    
+                    $enrollStmt->bind_param("ii", $user_id, $training_id);
+                
+                    // Insert enrollments for each selected user
+                    foreach ($user_ids as $user_id) {
+                        // Try to insert, ignore if duplicate
+                        if ($enrollStmt->execute()) {
+                            $enrolledCount++;
+                        } elseif ($conn->errno === 1062) { // Duplicate entry error
+                            $errorCount++;
+                        } else {
+                            throw new Exception($conn->error);
+                        }
+                    }
+                    
+                    // Commit transaction
+                    $conn->commit();
+                    
+                    // Success message
+                    $message = "$enrolledCount user(s) enrolled successfully";
+                    if ($errorCount > 0) {
+                        $message .= " ($errorCount already enrolled)";
+                    }
+                    
+                    $_SESSION['message'] = $message;
+                    redirect(url('enrollments/'));
+                } catch (Exception $e) {
+                    // Rollback transaction on error
+                    $conn->rollback();
+                    $error = 'Error enrolling users: ' . $e->getMessage();
                 }
                 
-                // Commit transaction
-                $conn->commit();
-                
-                // Success message
-                $message = "$enrolledCount user(s) enrolled successfully";
-                if ($errorCount > 0) {
-                    $message .= " ($errorCount already enrolled)";
-                }
-                
-                $_SESSION['message'] = $message;
-                redirect(url('enrollments/'));
-            } catch (Exception $e) {
-                // Rollback transaction on error
-                $conn->rollback();
-                $error = 'Error enrolling users: ' . $e->getMessage();
+                $enrollStmt->close();
             }
-            
-            $stmt->close();
         }
     }
 }

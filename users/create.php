@@ -41,42 +41,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         // Check if email already exists
         $stmt = $conn->prepare("SELECT id FROM users WHERE email = ?");
-        $stmt->bind_param("s", $email);
-        $stmt->execute();
-        $result = $stmt->get_result();
         
-        if ($result->num_rows > 0) {
-            $error = 'Email already exists';
-            $stmt->close();
+        if (!$stmt) {
+            $error = 'Error preparing statement: ' . $conn->error;
         } else {
-            // Hash password for security
-            $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
+            $stmt->bind_param("s", $email);
+            $stmt->execute();
+            $result = $stmt->get_result();
             
-            // Insert new user
-            $stmt = $conn->prepare(
-                "INSERT INTO users (full_name, email, password, role, phone, department, position) VALUES (?, ?, ?, ?, ?, ?, ?)"
-            );
-            $stmt->bind_param("sssssss", $full_name, $email, $hashedPassword, $role, $phone, $department, $position);
-            
-            if ($stmt->execute()) {
-                $userId = $conn->insert_id;
-                
-                // Log activity
-                logActivity('CREATE', 'users', $userId, null, array(
-                    'full_name' => $full_name,
-                    'email' => $email,
-                    'role' => $role
-                ));
-                
-                // Success
-                $_SESSION['message'] = 'User has been created successfully';
-                redirect(url('users/'));
+            if ($result->num_rows > 0) {
+                $error = 'Email already exists';
+                $stmt->close();
             } else {
-                // Error
-                $error = 'Error creating user: ' . $conn->error;
-            }
+                $stmt->close();
+                
+                // Hash password for security
+                $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
+                
+                // Insert new user
+                $stmt = $conn->prepare(
+                    "INSERT INTO users (full_name, email, password, role, phone, department, position) VALUES (?, ?, ?, ?, ?, ?, ?)"
+                );
+                
+                if (!$stmt) {
+                    $error = 'Error preparing insert statement: ' . $conn->error;
+                } else {
+                    $stmt->bind_param("sssssss", $full_name, $email, $hashedPassword, $role, $phone, $department, $position);
             
-            $stmt->close();
+                    if ($stmt->execute()) {
+                        $userId = $conn->insert_id;
+                        
+                        // Log activity
+                        logActivity('CREATE', 'users', $userId, null, array(
+                            'full_name' => $full_name,
+                            'email' => $email,
+                            'role' => $role
+                        ));
+                        
+                        // Success
+                        $_SESSION['message'] = 'User has been created successfully';
+                        redirect(url('users/'));
+                    } else {
+                        // Error
+                        $error = 'Error creating user: ' . $conn->error;
+                    }
+                    
+                    $stmt->close();
+                }
+            }
         }
         
         closeDB($conn);

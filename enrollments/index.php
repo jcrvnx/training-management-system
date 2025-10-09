@@ -45,6 +45,11 @@ $query = "
 ";
 $result = $conn->query($query);
 
+// Check if query failed
+if (!$result) {
+    die('Database query failed: ' . $conn->error);
+}
+
 // Check if any message in session
 $message = '';
 if (isset($_SESSION['message'])) {
@@ -84,7 +89,7 @@ include_once '../templates/header.php';
                     </tr>
                 </thead>
                 <tbody>
-                    <?php if ($result->num_rows > 0): ?>
+                    <?php if ($result && $result->num_rows > 0): ?>
                         <?php while ($enrollment = $result->fetch_assoc()): ?>
                             <tr>
                                 <td><?php echo $enrollment['id']; ?></td>

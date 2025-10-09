@@ -47,10 +47,10 @@ $userRole = getCurrentUserRole();
 
 // Get comprehensive analytics data
 try {
-    // Basic counts
-    $trainingCount = $conn->query("SELECT COUNT(*) as count FROM trainings")->fetch_assoc()['count'];
-    $userCount = $conn->query("SELECT COUNT(*) as count FROM users")->fetch_assoc()['count'];
-    $enrollmentCount = $conn->query("SELECT COUNT(*) as count FROM enrollments")->fetch_assoc()['count'];
+    // Basic counts using safe query functions
+    $trainingCount = safeCountQuery($conn, "SELECT COUNT(*) as count FROM trainings");
+    $userCount = safeCountQuery($conn, "SELECT COUNT(*) as count FROM users");
+    $enrollmentCount = safeCountQuery($conn, "SELECT COUNT(*) as count FROM enrollments");
     
     // Quiz and certificate stats
     $quizCount = 0;
@@ -70,10 +70,10 @@ try {
     }
     
     if ($advancedTablesExist) {
-        $quizCount = $conn->query("SELECT COUNT(*) as count FROM quizzes WHERE is_active = 1")->fetch_assoc()['count'];
-        $certificateCount = $conn->query("SELECT COUNT(*) as count FROM certificates WHERE status = 'active'")->fetch_assoc()['count'];
-        $quizAttempts = $conn->query("SELECT COUNT(*) as count FROM quiz_attempts WHERE status = 'submitted'")->fetch_assoc()['count'];
-        $passedQuizzes = $conn->query("SELECT COUNT(*) as count FROM quiz_attempts WHERE status = 'submitted' AND passed = 1")->fetch_assoc()['count'];
+        $quizCount = safeCountQuery($conn, "SELECT COUNT(*) as count FROM quizzes WHERE is_active = 1");
+        $certificateCount = safeCountQuery($conn, "SELECT COUNT(*) as count FROM certificates WHERE status = 'active'");
+        $quizAttempts = safeCountQuery($conn, "SELECT COUNT(*) as count FROM quiz_attempts WHERE status = 'submitted'");
+        $passedQuizzes = safeCountQuery($conn, "SELECT COUNT(*) as count FROM quiz_attempts WHERE status = 'submitted' AND passed = 1");
     }
     
     // Role-based data
@@ -95,19 +95,19 @@ try {
         
     } elseif (isTrainer()) {
         // Trainer gets their assigned trainings
-        $myTrainings = $conn->query("SELECT COUNT(*) as count FROM trainings WHERE instructor_id = {$userId}")->fetch_assoc()['count'];
-        $myEnrollments = $conn->query("
+        $myTrainings = safeCountQuery($conn, "SELECT COUNT(*) as count FROM trainings WHERE instructor_id = {$userId}");
+        $myEnrollments = safeCountQuery($conn, "
             SELECT COUNT(*) as count FROM enrollments e
             JOIN trainings t ON e.training_id = t.id
             WHERE t.instructor_id = {$userId}
-        ")->fetch_assoc()['count'];
+        ");
         
         if ($advancedTablesExist) {
-            $myCertificates = $conn->query("
+            $myCertificates = safeCountQuery($conn, "
                 SELECT COUNT(*) as count FROM certificates c
                 JOIN trainings t ON c.training_id = t.id
                 WHERE t.instructor_id = {$userId} AND c.status = 'active'
-            ")->fetch_assoc()['count'];
+            ");
         } else {
             $myCertificates = 0;
         }
@@ -125,13 +125,13 @@ try {
         
     } else {
         // Regular user gets their personal stats
-        $myTrainings = $conn->query("SELECT COUNT(*) as count FROM enrollments WHERE user_id = {$userId}")->fetch_assoc()['count'];
+        $myTrainings = safeCountQuery($conn, "SELECT COUNT(*) as count FROM enrollments WHERE user_id = {$userId}");
         $myEnrollments = $myTrainings; // Same for users
         
         if ($advancedTablesExist) {
-            $myCertificates = $conn->query("SELECT COUNT(*) as count FROM certificates WHERE user_id = {$userId} AND status = 'active'")->fetch_assoc()['count'];
-            $myQuizAttempts = $conn->query("SELECT COUNT(*) as count FROM quiz_attempts WHERE user_id = {$userId} AND status = 'submitted'")->fetch_assoc()['count'];
-            $myPassedQuizzes = $conn->query("SELECT COUNT(*) as count FROM quiz_attempts WHERE user_id = {$userId} AND status = 'submitted' AND passed = 1")->fetch_assoc()['count'];
+            $myCertificates = safeCountQuery($conn, "SELECT COUNT(*) as count FROM certificates WHERE user_id = {$userId} AND status = 'active'");
+            $myQuizAttempts = safeCountQuery($conn, "SELECT COUNT(*) as count FROM quiz_attempts WHERE user_id = {$userId} AND status = 'submitted'");
+            $myPassedQuizzes = safeCountQuery($conn, "SELECT COUNT(*) as count FROM quiz_attempts WHERE user_id = {$userId} AND status = 'submitted' AND passed = 1");
         } else {
             $myCertificates = 0;
             $myQuizAttempts = 0;
@@ -150,10 +150,33 @@ try {
         ");
     }
     
-    // Get notifications for current user
-    $notificationManager = new NotificationManager();
-    $unreadNotifications = $notificationManager->getUnreadCount($userId);
-    $recentNotifications = $notificationManager->getUserNotifications($userId, 5);
+// Get notifications for current user (with error handling)
+    $unreadNotifications = 0;
+    $recentNotifications = array();
+    
+    try {
+        // Check if notifications table exists first
+        $notificationTablesExist = true;
+        $notificationTables = ['notifications'];
+        foreach ($notificationTables as $table) {
+            $result = $conn->query("SHOW TABLES LIKE '$table'");
+            if ($result->num_rows === 0) {
+                $notificationTablesExist = false;
+                break;
+            }
+        }
+        
+        if ($notificationTablesExist) {
+            $notificationManager = new NotificationManager();
+            $unreadNotifications = $notificationManager->getUnreadCount($userId);
+            $recentNotifications = $notificationManager->getUserNotifications($userId, 5);
+        }
+    } catch (Exception $e) {
+        // If notifications fail, continue with empty notifications
+        error_log('Notification system error: ' . $e->getMessage());
+        $unreadNotifications = 0;
+        $recentNotifications = array();
+    }
     
 } catch (Exception $e) {
     // Database error, redirect to installation
@@ -238,7 +261,8 @@ include_once 'templates/header.php';
                         </div>
                     </div>
                     <div class="mt-2">
-                        <a href="<?php echo BASE_URL; ?>trainings/" class="btn btn-primary btn-sm">Manage</a>
+                        <a href="<?php echo url('dashboard/trainings_detail.php'); ?>" class="btn btn-primary btn-sm">View Details</a>
+                        <a href="<?php echo BASE_URL; ?>trainings/" class="btn btn-outline-primary btn-sm">Manage</a>
                     </div>
                 </div>
             </div>
@@ -257,7 +281,10 @@ include_once 'templates/header.php';
                         </div>
                     </div>
                     <div class="mt-2">
-                        <a href="<?php echo BASE_URL; ?>users/" class="btn btn-success btn-sm">Manage</a>
+                        <a href="<?php echo url('dashboard/users_detail.php'); ?>" class="btn btn-success btn-sm">View Details</a>
+                        <?php if (isAdmin()): ?>
+                        <a href="<?php echo BASE_URL; ?>users/" class="btn btn-outline-success btn-sm">Manage</a>
+                        <?php endif; ?>
                     </div>
                 </div>
             </div>
@@ -276,7 +303,8 @@ include_once 'templates/header.php';
                         </div>
                     </div>
                     <div class="mt-2">
-                        <a href="<?php echo BASE_URL; ?>quizzes/" class="btn btn-info btn-sm">View</a>
+                        <a href="<?php echo url('dashboard/quizzes_detail.php'); ?>" class="btn btn-info btn-sm">View Details</a>
+                        <a href="<?php echo BASE_URL; ?>quizzes/" class="btn btn-outline-info btn-sm">Manage</a>
                     </div>
                 </div>
             </div>
@@ -295,7 +323,8 @@ include_once 'templates/header.php';
                         </div>
                     </div>
                     <div class="mt-2">
-                        <a href="<?php echo BASE_URL; ?>certificates/" class="btn btn-warning btn-sm">View</a>
+                        <a href="<?php echo url('dashboard/certificates_detail.php'); ?>" class="btn btn-warning btn-sm">View Details</a>
+                        <a href="<?php echo BASE_URL; ?>certificates/" class="btn btn-outline-warning btn-sm">Manage</a>
                     </div>
                 </div>
             </div>

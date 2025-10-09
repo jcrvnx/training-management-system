@@ -44,6 +44,12 @@ if ($result->num_rows === 0) {
 }
 
 $enrollment = $result->fetch_assoc();
+if (!$enrollment) {
+    $stmt->close();
+    closeDB($conn);
+    $_SESSION['message'] = 'Error retrieving enrollment data';
+    redirect(url('enrollments/'));
+}
 $stmt->close();
 
 // Delete enrollment

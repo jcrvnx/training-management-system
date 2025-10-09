@@ -110,6 +110,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     
     $user = $result->fetch_assoc();
+    if (!$user) {
+        closeDB($conn);
+        $_SESSION['message'] = 'Error retrieving user data';
+        redirect(url('users/'));
+    }
     $stmt->close();
 }
 

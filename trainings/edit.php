@@ -70,6 +70,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     
     $training = $result->fetch_assoc();
+    if (!$training) {
+        closeDB($conn);
+        $_SESSION['message'] = 'Error retrieving training data';
+        redirect(url('trainings/'));
+    }
     $stmt->close();
 }
 

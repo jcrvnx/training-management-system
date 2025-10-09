@@ -44,6 +44,12 @@ if ($result->num_rows === 0) {
 }
 
 $user = $result->fetch_assoc();
+if (!$user) {
+    $stmt->close();
+    closeDB($conn);
+    $_SESSION['message'] = 'Error retrieving user data';
+    redirect(url('users/'));
+}
 $stmt->close();
 
 // Delete user

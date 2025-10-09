@@ -59,19 +59,23 @@ if ($conn && $conn instanceof mysqli) {
     
     // Test 3: Sample Data Check
     echo "<h6 class='mt-3'>👥 Sample Data Check:</h6>";
-    $userCount = $conn->query("SELECT COUNT(*) as count FROM users")->fetch_assoc()['count'];
-    $categoryCount = $conn->query("SELECT COUNT(*) as count FROM course_categories")->fetch_assoc()['count'];
+    $userCount = safeCountQuery($conn, "SELECT COUNT(*) as count FROM users");
+    $categoryCount = safeCountQuery($conn, "SELECT COUNT(*) as count FROM course_categories");
     
     echo "<p>Users: <strong>$userCount</strong> | Categories: <strong>$categoryCount</strong></p>";
     
     if ($userCount > 0) {
         echo "<h6>Default Users:</h6>";
-        $users = $conn->query("SELECT full_name, email, role FROM users LIMIT 5");
-        echo "<table class='table table-sm'><tr><th>Name</th><th>Email</th><th>Role</th></tr>";
-        while ($user = $users->fetch_assoc()) {
-            echo "<tr><td>{$user['full_name']}</td><td>{$user['email']}</td><td><span class='badge bg-info'>{$user['role']}</span></td></tr>";
+        $users = safeQuery($conn, "SELECT full_name, email, role FROM users LIMIT 5");
+        if ($users && $users->num_rows > 0) {
+            echo "<table class='table table-sm'><tr><th>Name</th><th>Email</th><th>Role</th></tr>";
+            while ($user = $users->fetch_assoc()) {
+                echo "<tr><td>{$user['full_name']}</td><td>{$user['email']}</td><td><span class='badge bg-info'>{$user['role']}</span></td></tr>";
+            }
+            echo "</table>";
+        } else {
+            echo "<p>No users found or query failed.</p>";
         }
-        echo "</table>";
     }
     
 } else {

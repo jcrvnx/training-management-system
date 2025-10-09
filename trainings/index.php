@@ -12,8 +12,16 @@ if (!isLoggedIn()) {
 // Get database connection
 $conn = connectDB();
 
-// Get all trainings
-$result = $conn->query("SELECT * FROM trainings ORDER BY start_date DESC");
+// Get all trainings with error handling
+$result = $conn->query("SELECT t.*, c.name as category_name, u.full_name as instructor_name FROM trainings t LEFT JOIN course_categories c ON t.category_id = c.id LEFT JOIN users u ON t.instructor_id = u.id ORDER BY t.start_date DESC");
+
+// Check if query failed
+if (!$result) {
+    $result = $conn->query("SELECT * FROM trainings ORDER BY start_date DESC");
+    if (!$result) {
+        die('Database query failed: ' . $conn->error);
+    }
+}
 
 // Check if any message in session
 $message = '';
@@ -53,7 +61,7 @@ include_once '../templates/header.php';
                     </tr>
                 </thead>
                 <tbody>
-                    <?php if ($result->num_rows > 0): ?>
+                    <?php if ($result && $result->num_rows > 0): ?>
                         <?php while ($training = $result->fetch_assoc()): ?>
                             <tr>
                                 <td><?php echo $training['title']; ?></td>

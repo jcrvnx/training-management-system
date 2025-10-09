@@ -36,6 +36,9 @@ if ($attemptResult->num_rows === 0) {
 }
 
 $attempt = $attemptResult->fetch_assoc();
+if (!$attempt) {
+    redirect('dashboard.php');
+}
 $attemptStmt->close();
 
 $userId = getCurrentUser()['id'];
@@ -60,8 +63,10 @@ $answersStmt->bind_param("i", $attemptId);
 $answersStmt->execute();
 $answersResult = $answersStmt->get_result();
 $existingAnswers = array();
-while ($row = $answersResult->fetch_assoc()) {
-    $existingAnswers[$row['question_id']] = $row;
+if ($answersResult && $answersResult->num_rows > 0) {
+    while ($row = $answersResult->fetch_assoc()) {
+        $existingAnswers[$row['question_id']] = $row;
+    }
 }
 $answersStmt->close();
 

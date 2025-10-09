@@ -64,7 +64,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             // Check if this is the first user (make them admin)
             $result = $conn->query("SELECT COUNT(*) as count FROM users");
-            $isFirstUser = ($result->fetch_assoc()['count'] == 0);
+            $isFirstUser = false;
+            if ($result && $result->num_rows > 0) {
+                $row = $result->fetch_assoc();
+                $isFirstUser = ($row['count'] == 0);
+            }
             $role = $isFirstUser ? 'admin' : 'user';
             
             // Insert new user

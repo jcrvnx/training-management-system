@@ -274,6 +274,12 @@ function getSystemSetting($key, $default = null) {
     }
     
     $row = $result->fetch_assoc();
+    if (!$row) {
+        $stmt->close();
+        closeDB($conn);
+        return $default;
+    }
+    
     $value = $row['setting_value'];
     $type = $row['setting_type'];
     
@@ -331,4 +337,31 @@ function setSystemSetting($key, $value, $type = 'string') {
     
     return $result;
 }
-?> 
+
+// Safe query execution with error handling
+function safeQuery($conn, $query) {
+    $result = $conn->query($query);
+    if ($result === false) {
+        return false;
+    }
+    return $result;
+}
+
+// Safe fetch_assoc with error handling
+function safeFetchAssoc($result) {
+    if ($result && $result instanceof mysqli_result && $result->num_rows > 0) {
+        return $result->fetch_assoc();
+    }
+    return false;
+}
+
+// Safe count query - returns 0 if query fails
+function safeCountQuery($conn, $query) {
+    $result = safeQuery($conn, $query);
+    if ($result && $result->num_rows > 0) {
+        $row = $result->fetch_assoc();
+        return isset($row['count']) ? (int)$row['count'] : 0;
+    }
+    return 0;
+}
+?>

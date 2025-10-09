@@ -45,6 +45,10 @@ class CertificateManager {
         }
         
         $attempt = $result->fetch_assoc();
+        if (!$attempt) {
+            $attemptStmt->close();
+            return array('success' => false, 'message' => 'Error retrieving quiz attempt data');
+        }
         $attemptStmt->close();
         
         // Check if certificate already exists
@@ -55,8 +59,10 @@ class CertificateManager {
         
         if ($existingResult->num_rows > 0) {
             $existing = $existingResult->fetch_assoc();
-            $existingStmt->close();
-            return array('success' => true, 'message' => 'Certificate already exists', 'certificate_id' => $existing['id']);
+            if ($existing) {
+                $existingStmt->close();
+                return array('success' => true, 'message' => 'Certificate already exists', 'certificate_id' => $existing['id']);
+            }
         }
         $existingStmt->close();
         
@@ -136,7 +142,7 @@ class CertificateManager {
         
         $certificate = $result->fetch_assoc();
         $stmt->close();
-        return $certificate;
+        return $certificate ? $certificate : null;
     }
     
     /**
@@ -164,7 +170,7 @@ class CertificateManager {
         
         $certificate = $result->fetch_assoc();
         $stmt->close();
-        return $certificate;
+        return $certificate ? $certificate : null;
     }
     
     /**
@@ -185,8 +191,10 @@ class CertificateManager {
         $result = $stmt->get_result();
         
         $certificates = array();
-        while ($row = $result->fetch_assoc()) {
-            $certificates[] = $row;
+        if ($result && $result->num_rows > 0) {
+            while ($row = $result->fetch_assoc()) {
+                $certificates[] = $row;
+            }
         }
         
         $stmt->close();
