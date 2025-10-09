@@ -3,6 +3,7 @@ session_start();
 require_once '../includes/config.php';
 require_once '../includes/functions.php';
 require_once '../includes/db.php';
+require_once '../includes/validator.php';
 
 // Check permissions
 requirePermission('users.create');
@@ -11,27 +12,43 @@ $error = '';
 
 // Process form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $full_name = sanitize($_POST['full_name']);
-    $email = sanitize($_POST['email']);
-    $password = sanitize($_POST['password']);
-    $confirm_password = sanitize($_POST['confirm_password']);
-    $role = sanitize($_POST['role']);
-    $phone = sanitize($_POST['phone']);
-    $department = sanitize($_POST['department']);
-    $position = sanitize($_POST['position']);
+    // Sanitize input data
+    $data = array(
+        'full_name' => sanitizeString($_POST['full_name']),
+        'email' => sanitizeEmail($_POST['email']),
+        'password' => $_POST['password'],
+        'confirm_password' => $_POST['confirm_password'],
+        'role' => sanitizeString($_POST['role']),
+        'phone' => sanitizeString($_POST['phone']),
+        'department' => sanitizeString($_POST['department']),
+        'position' => sanitizeString($_POST['position'])
+    );
     
-    // Validate input
-    if (empty($full_name) || empty($email) || empty($password) || empty($confirm_password)) {
-        $error = 'Please fill all required fields';
-    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        $error = 'Please enter a valid email address';
-    } elseif ($password !== $confirm_password) {
-        $error = 'Passwords do not match';
-    } elseif (strlen($password) < 6) {
-        $error = 'Password must be at least 6 characters long';
-    } elseif (!in_array($role, ['admin', 'trainer', 'user'])) {
-        $error = 'Invalid role selected';
-    } else {
+    // Define validation rules
+    $rules = array(
+        'full_name' => 'required|alpha|min_length:2|max_length:100',
+        'email' => 'required|email|max_length:100|unique:users.email',
+        'password' => 'required|min_length:6|max_length:50|regex:/^(?=.*[a-zA-Z])(?=.*\d).+$/',
+        'confirm_password' => 'required|confirmed:password',
+        'role' => 'required|in:admin,trainer,user',
+        'phone' => 'max_length:20|regex:/^[\+]?[0-9\s\-\(\)]+$/',
+        'department' => 'max_length:100',
+        'position' => 'max_length:100'
+    );
+    
+    // Custom validation messages
+    $messages = array(
+        'full_name.alpha' => 'Full name may only contain letters and spaces.',
+        'password.regex' => 'Password must contain at least one letter and one number.',
+        'confirm_password.confirmed' => 'Password confirmation does not match.',
+        'role.in' => 'Please select a valid role.',
+        'phone.regex' => 'Please enter a valid phone number.'
+    );
+    
+    // Perform validation
+    $validator = validate($data, $rules, $messages);
+    
+    if ($validator->validate()) {
         // Get database connection
         $conn = connectDB(false);
         
@@ -39,59 +56,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect(url('install_schema.php'));
         }
         
-        // Check if email already exists
-        $stmt = $conn->prepare("SELECT id FROM users WHERE email = ?");
+        // Hash password for security
+        $hashedPassword = password_hash($data['password'], PASSWORD_DEFAULT);
+        
+        // Insert new user (email uniqueness is already validated)
+        $stmt = $conn->prepare(
+            "INSERT INTO users (full_name, email, password, role, phone, department, position) VALUES (?, ?, ?, ?, ?, ?, ?)"
+        );
         
         if (!$stmt) {
-            $error = 'Error preparing statement: ' . $conn->error;
+            $error = 'Error preparing insert statement: ' . $conn->error;
         } else {
-            $stmt->bind_param("s", $email);
-            $stmt->execute();
-            $result = $stmt->get_result();
-            
-            if ($result->num_rows > 0) {
-                $error = 'Email already exists';
-                $stmt->close();
+            $stmt->bind_param("sssssss", 
+                $data['full_name'], 
+                $data['email'], 
+                $hashedPassword, 
+                $data['role'], 
+                $data['phone'], 
+                $data['department'], 
+                $data['position']
+            );
+    
+            if ($stmt->execute()) {
+                $userId = $conn->insert_id;
+                
+                // Log activity
+                logActivity('CREATE', 'users', $userId, null, array(
+                    'full_name' => $data['full_name'],
+                    'email' => $data['email'],
+                    'role' => $data['role']
+                ));
+                
+                // Success
+                $_SESSION['message'] = 'User has been created successfully';
+                redirect(url('users/'));
             } else {
-                $stmt->close();
-                
-                // Hash password for security
-                $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
-                
-                // Insert new user
-                $stmt = $conn->prepare(
-                    "INSERT INTO users (full_name, email, password, role, phone, department, position) VALUES (?, ?, ?, ?, ?, ?, ?)"
-                );
-                
-                if (!$stmt) {
-                    $error = 'Error preparing insert statement: ' . $conn->error;
-                } else {
-                    $stmt->bind_param("sssssss", $full_name, $email, $hashedPassword, $role, $phone, $department, $position);
-            
-                    if ($stmt->execute()) {
-                        $userId = $conn->insert_id;
-                        
-                        // Log activity
-                        logActivity('CREATE', 'users', $userId, null, array(
-                            'full_name' => $full_name,
-                            'email' => $email,
-                            'role' => $role
-                        ));
-                        
-                        // Success
-                        $_SESSION['message'] = 'User has been created successfully';
-                        redirect(url('users/'));
-                    } else {
-                        // Error
-                        $error = 'Error creating user: ' . $conn->error;
-                    }
-                    
-                    $stmt->close();
-                }
+                // Error
+                $error = 'Error creating user: ' . $conn->error;
             }
+            
+            $stmt->close();
         }
         
         closeDB($conn);
+    } else {
+        // Validation failed - get first error
+        $errors = $validator->errors();
+        $error = reset($errors); // Get first error message
     }
 }
 
@@ -111,15 +122,15 @@ include_once '../templates/header.php';
 
 <div class="card shadow-sm">
     <div class="card-body">
-        <form method="POST">
+        <form method="POST" id="createUserForm" novalidate>
             <div class="mb-3">
                 <label for="full_name" class="form-label">Full Name *</label>
-                <input type="text" class="form-control" id="full_name" name="full_name" value="<?php echo isset($full_name) ? $full_name : ''; ?>" required>
+                <input type="text" class="form-control" id="full_name" name="full_name" value="<?php echo isset($data['full_name']) ? $data['full_name'] : ''; ?>" required>
             </div>
             
             <div class="mb-3">
                 <label for="email" class="form-label">Email *</label>
-                <input type="email" class="form-control" id="email" name="email" value="<?php echo isset($email) ? $email : ''; ?>" required>
+                <input type="email" class="form-control" id="email" name="email" value="<?php echo isset($data['email']) ? $data['email'] : ''; ?>" required>
             </div>
             
             <div class="row">
@@ -138,16 +149,16 @@ include_once '../templates/header.php';
             <div class="row">
                 <div class="col-md-6 mb-3">
                     <label for="phone" class="form-label">Phone Number</label>
-                    <input type="tel" class="form-control" id="phone" name="phone" value="<?php echo isset($phone) ? $phone : ''; ?>">
+                    <input type="tel" class="form-control" id="phone" name="phone" value="<?php echo isset($data['phone']) ? $data['phone'] : ''; ?>">
                 </div>
                 
                 <div class="col-md-6 mb-3">
                     <label for="role" class="form-label">Role *</label>
                     <select class="form-select" id="role" name="role" required>
-                        <option value="user" selected>User</option>
-                        <option value="trainer">Trainer</option>
+                        <option value="user" <?php echo (isset($data['role']) && $data['role'] === 'user') || !isset($data['role']) ? 'selected' : ''; ?>>User</option>
+                        <option value="trainer" <?php echo isset($data['role']) && $data['role'] === 'trainer' ? 'selected' : ''; ?>>Trainer</option>
                         <?php if (isAdmin()): ?>
-                        <option value="admin">Administrator</option>
+                        <option value="admin" <?php echo isset($data['role']) && $data['role'] === 'admin' ? 'selected' : ''; ?>>Administrator</option>
                         <?php endif; ?>
                     </select>
                 </div>
@@ -156,12 +167,12 @@ include_once '../templates/header.php';
             <div class="row">
                 <div class="col-md-6 mb-3">
                     <label for="department" class="form-label">Department</label>
-                    <input type="text" class="form-control" id="department" name="department" value="<?php echo isset($department) ? $department : ''; ?>">
+                    <input type="text" class="form-control" id="department" name="department" value="<?php echo isset($data['department']) ? $data['department'] : ''; ?>">
                 </div>
                 
                 <div class="col-md-6 mb-3">
                     <label for="position" class="form-label">Position</label>
-                    <input type="text" class="form-control" id="position" name="position" value="<?php echo isset($position) ? $position : ''; ?>">
+                    <input type="text" class="form-control" id="position" name="position" value="<?php echo isset($data['position']) ? $data['position'] : ''; ?>">
                 </div>
             </div>
             
@@ -173,4 +184,106 @@ include_once '../templates/header.php';
     </div>
 </div>
 
-<?php include_once '../templates/footer.php'; ?> 
+<!-- Include validation library -->
+<script src="<?php echo url('assets/js/validation.js'); ?>"></script>
+<script>
+// Initialize form validation
+document.addEventListener('DOMContentLoaded', function() {
+    const validator = new TMSValidator('#createUserForm');
+    
+    // Add validation rules
+    validator.addRules({
+        full_name: ['required', 'alpha', 'minLength:2', 'maxLength:100'],
+        email: ['required', 'email', 'maxLength:100'],
+        password: ['required', 'minLength:6', 'maxLength:50', 'regex:^(?=.*[a-zA-Z])(?=.*\\d).+$'],
+        confirm_password: ['required', 'confirmed:password'],
+        role: ['required'],
+        phone: ['maxLength:20', 'regex:^[\\+]?[0-9\\s\\-\\(\\)]+$'],
+        department: ['maxLength:100'],
+        position: ['maxLength:100']
+    });
+    
+    // Add custom error messages
+    validator.customMessages = {
+        'full_name': {
+            'alpha': 'Full name may only contain letters and spaces.',
+            'minLength': 'Full name must be at least 2 characters.'
+        },
+        'password': {
+            'regex': 'Password must contain at least one letter and one number.'
+        },
+        'confirm_password': {
+            'confirmed': 'Password confirmation does not match.'
+        },
+        'phone': {
+            'regex': 'Please enter a valid phone number.'
+        }
+    };
+    
+    // Add real-time validation feedback
+    const form = document.getElementById('createUserForm');
+    const inputs = form.querySelectorAll('input, select');
+    
+    inputs.forEach(input => {
+        input.addEventListener('blur', function() {
+            if (this.name && validator.rules[this.name]) {
+                validator.validateField(this.name);
+            }
+        });
+        
+        // Special handling for password confirmation
+        if (input.name === 'confirm_password') {
+            input.addEventListener('input', function() {
+                const password = form.querySelector('[name="password"]').value;
+                if (this.value && this.value !== password) {
+                    this.classList.add('is-invalid');
+                    let feedback = this.parentNode.querySelector('.invalid-feedback');
+                    if (!feedback) {
+                        feedback = document.createElement('div');
+                        feedback.className = 'invalid-feedback';
+                        this.parentNode.appendChild(feedback);
+                    }
+                    feedback.textContent = 'Password confirmation does not match.';
+                } else if (this.value === password && password.length >= 6) {
+                    this.classList.remove('is-invalid');
+                    this.classList.add('is-valid');
+                    const feedback = this.parentNode.querySelector('.invalid-feedback');
+                    if (feedback) feedback.remove();
+                }
+            });
+        }
+    });
+    
+    // Password strength indicator
+    const passwordField = document.getElementById('password');
+    const strengthIndicator = document.createElement('div');
+    strengthIndicator.className = 'password-strength mt-1';
+    passwordField.parentNode.appendChild(strengthIndicator);
+    
+    passwordField.addEventListener('input', function() {
+        const password = this.value;
+        let strength = 0;
+        let feedback = [];
+        
+        if (password.length >= 6) strength++; else feedback.push('at least 6 characters');
+        if (/[a-z]/.test(password)) strength++; else feedback.push('lowercase letter');
+        if (/[A-Z]/.test(password)) strength++; else feedback.push('uppercase letter');
+        if (/\d/.test(password)) strength++; else feedback.push('number');
+        if (/[^\w\s]/.test(password)) strength++;
+        
+        const strengthTexts = ['Very Weak', 'Weak', 'Fair', 'Good', 'Strong'];
+        const strengthColors = ['text-danger', 'text-warning', 'text-info', 'text-success', 'text-success'];
+        
+        if (password.length > 0) {
+            strengthIndicator.innerHTML = `
+                <small class="${strengthColors[strength]}">Password Strength: ${strengthTexts[strength]}</small>
+                ${feedback.length > 0 ? `<br><small class="text-muted">Add: ${feedback.join(', ')}</small>` : ''}
+            `;
+        } else {
+            strengthIndicator.innerHTML = '';
+        }
+    });
+});
+</script>
+
+<?php include_once '../templates/footer.php'; ?>
